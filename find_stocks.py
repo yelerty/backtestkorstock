@@ -79,20 +79,15 @@ class StockAnalyzer:
             per = float(per_tag.text) if per_tag and per_tag.text not in ['N/A', ''] else None
             pbr = float(pbr_tag.text) if pbr_tag and pbr_tag.text not in ['N/A', ''] else None
 
-            dividend_yield, roe, debt_ratio, foreign_ratio = None, None, None, None
-            
-            div_yield_th = soup.find('th', string=lambda text: text and '배당수익률' in text)
-            if div_yield_th:
-                div_yield_td = div_yield_th.find_next_sibling('td')
-                if div_yield_td and '%' in div_yield_td.text:
-                    dividend_yield = float(div_yield_td.text.replace('%', '').strip())
-
+            foreign_ratio = None
+            # '외국인소진율' 텍스트를 포함하는 th를 더 정확하게 찾습니다.
             foreign_ratio_th = soup.find('th', string=lambda text: text and '외국인소진율' in text)
             if foreign_ratio_th:
                 foreign_ratio_td = foreign_ratio_th.find_next_sibling('td')
                 if foreign_ratio_td and '%' in foreign_ratio_td.text:
-                    foreign_ratio = float(foreign_ratio_td.text.replace('%', '').strip())
+                    foreign_ratio = float(foreign_ratio_td.text.strip().replace('%', ''))
 
+            roe = None
             finance_summary_table = soup.find('div', class_='cop_analysis').find('table')
             if finance_summary_table:
                 for row in finance_summary_table.find_all('tr'):
@@ -100,13 +95,10 @@ class StockAnalyzer:
                     if 'ROE(지배주주)' in th_text and row.find_all('td'):
                         roe_text = row.find_all('td')[-1].text.strip()
                         if roe_text: roe = float(roe_text)
-                    elif '부채비율' in th_text and row.find_all('td'):
-                        debt_text = row.find_all('td')[-1].text.strip()
-                        if debt_text: debt_ratio = float(debt_text)
-
-            return per, pbr, dividend_yield, roe, debt_ratio, foreign_ratio
+            
+            return per, pbr, roe, foreign_ratio
         except (ValueError, AttributeError):
-            return None, None, None, None, None, None
+            return None, None, None, None
 
     def analyze(self, output_file=None):
         """분석을 수행하고 결과를 출력하거나 파일로 저장합니다."""
@@ -151,7 +143,7 @@ class StockAnalyzer:
                 change_rate = df['Change'].iloc[-1] * 100
                 high_52_week = df['High'].max()
                 
-                per, pbr, dividend_yield, roe, debt_ratio, foreign_ratio = self.get_stock_fundamentals(stock_code, soup)
+                per, pbr, roe, foreign_ratio = self.get_stock_fundamentals(stock_code, soup)
 
                 if pd.isna(current_price) or pd.isna(high_52_week) or high_52_week == 0: continue
 
@@ -160,14 +152,11 @@ class StockAnalyzer:
                 if pbr is not None and 0 < pbr < 1.0: score += 1; passed_filters.append(f"PBR: {pbr:.2f}")
                 if per is not None and 0 < per < 15: score += 1; passed_filters.append(f"PER: {per:.2f}")
                 if roe is not None and roe > 15: score += 1; passed_filters.append(f"ROE: {roe:.2f}%")
-                if debt_ratio is not None and debt_ratio < 100: score += 1; passed_filters.append(f"부채비율: {debt_ratio:.2f}%")
-                if dividend_yield is not None and dividend_yield > 2.0: score += 1; passed_filters.append(f"배당: {dividend_yield:.2f}%")
 
                 analyzed_results.append({
                     "종목명": stock_name, "코드": stock_code, "종합 점수": score,
                     "현재가": int(current_price), "등락률": change_rate, "52주 신고가": int(high_52_week),
-                    "PER": per, "PBR": pbr, "ROE": roe, "부채비율": debt_ratio, 
-                    "배당수익률": dividend_yield, "외국인보유율": foreign_ratio,
+                    "PER": per, "PBR": pbr, "ROE": roe, "외국인보유율": foreign_ratio,
                     "필터": ', '.join(passed_filters)
                 })
             except Exception as e:
@@ -205,10 +194,9 @@ class StockAnalyzer:
             price_ratio = result['현재가'] / result['52주 신고가']
             change_rate_str = f"{result['등락률']:.2f}%"
             
-            print(f"[{i:02d}] {result['종목명']} ({result['코드']}) - 종합 점수: {result['종합 점수']}/5")
+            print(f"[{i:02d}] {result['종목명']} ({result['코드']}) - 종합 점수: {result['종합 점수']}/3")
             print(f"  - 현재가: {result['현재가']:,}원 (등락률: {change_rate_str}) | 52주 신고가: {result['52주 신고가']:,}원 (비율: {price_ratio:.2%})")
             print(f"  - PER: {result['PER'] or 'N/A'} | PBR: {result['PBR'] or 'N/A'} | ROE: {str(result['ROE'])+'%' if result['ROE'] is not None else 'N/A'}")
-            print(f"  - 부채비율: {str(result['부채비율'])+'%' if result['부채비율'] is not None else 'N/A'} | 배당수익률: {str(result['배당수익률'])+'%' if result['배당수익률'] is not None else 'N/A'}")
             print(f"  - 외국인보유율: {str(result['외국인보유율'])+'%' if result['외국인보유율'] is not None else 'N/A'}")
             if result['필터']:
                 print(f"  >>> 필터 만족: [ {result['필터']} ]")

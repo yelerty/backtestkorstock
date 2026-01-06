@@ -1,0 +1,37 @@
+name: Daily Stock Dashboard Update
+
+on:
+  schedule:
+    # 매일 오전 8시 45분 (KST 기준 - UTC로는 전날 23:45)
+    # GitHub Actions는 UTC 시간대를 사용합니다
+    - cron: '45 23 * * *'
+  workflow_dispatch:  # 수동 실행도 가능하도록
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests beautifulsoup4 pandas FinanceDataReader yfinance
+
+    - name: Generate dashboard HTML
+      run: |
+        python unified_dashboard_html.py --market kospi --investor foreign --days 2 --output docs/index.html
+
+    - name: Commit and push if changed
+      run: |
+        git config --global user.name 'GitHub Actions Bot'
+        git config --global user.email 'actions@github.com'
+        git add docs/index.html
+        git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 Update dashboard - $(date +'%Y-%m-%d %H:%M:%S')" && git push)
