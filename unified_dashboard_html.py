@@ -70,6 +70,7 @@ class UnifiedStockDashboardHTML:
                     continue
 
                 latest = df.iloc[-1]
+                data_date = df.index[-1].strftime('%Y-%m-%d %H:%M')
                 price = f"{latest['Close']:,.2f}"
                 change = latest['Change'] * 100
                 change_class = 'positive' if change > 0 else 'negative' if change < 0 else 'neutral'
@@ -81,6 +82,7 @@ class UnifiedStockDashboardHTML:
                     <div class="index-symbol">{symbol}</div>
                     <div class="index-price">{price}</div>
                     <div class="index-change {change_class}">{change_str}</div>
+                    <div class="index-time">{data_date}</div>
                 </div>
                 '''
             except Exception as e:
@@ -105,6 +107,16 @@ class UnifiedStockDashboardHTML:
                 change = price - previous['Close']
                 change_percent = (change / previous['Close']) * 100
 
+                # 실시간 여부 확인 (최근 1시간 이내 데이터면 실시간으로 간주)
+                latest_time = data.index[-1]
+                now_utc = datetime.now(latest_time.tzinfo) if latest_time.tzinfo else datetime.utcnow()
+                time_diff = now_utc - latest_time
+
+                if time_diff.total_seconds() < 3600:  # 1시간 이내
+                    time_str = "(실시간)"
+                else:
+                    time_str = latest_time.strftime('%Y-%m-%d %H:%M')
+
                 price_str = f"{price:,.2f}"
                 change_class = 'positive' if change_percent > 0 else 'negative' if change_percent < 0 else 'neutral'
                 change_str = f"{change_percent:+.2f}%"
@@ -115,6 +127,7 @@ class UnifiedStockDashboardHTML:
                     <div class="index-symbol">{ticker}</div>
                     <div class="index-price">{price_str}</div>
                     <div class="index-change {change_class}">{change_str}</div>
+                    <div class="index-time">{time_str}</div>
                 </div>
                 '''
             except Exception as e:
@@ -128,22 +141,34 @@ class UnifiedStockDashboardHTML:
         investor_kr = '외국인' if self.investor_type == 'foreign' else '기관'
         market_kr = 'KOSPI' if self.market == 'kospi' else 'KOSDAQ'
 
-        html = f'<div class="section"><h2>📈 오늘의 {investor_kr} 순매수 상위 종목 ({market_kr})</h2>'
-        html += '<div class="stock-list">'
-
         list_url = f"{self.BASE_URL}/sise/sise_deal_rank_iframe.naver?sosok={self.market_code}&investor_gubun={self.investor_code}&type=buy"
         soup = self._fetch_url(list_url)
 
         if not soup:
-            html += '<p>데이터를 가져올 수 없습니다.</p></div></div>'
+            html = f'<div class="section"><h2>📈 {investor_kr} 순매수 상위 종목 ({market_kr})</h2>'
+            html += '<p>데이터를 가져올 수 없습니다.</p></div>'
             self._add_html(html)
             return
 
         boxes = soup.find_all('div', class_='box_type_ms')
         if len(boxes) < 1:
-            html += '<p>데이터를 찾을 수 없습니다.</p></div></div>'
+            html = f'<div class="section"><h2>📈 {investor_kr} 순매수 상위 종목 ({market_kr})</h2>'
+            html += '<p>데이터를 찾을 수 없습니다.</p></div>'
             self._add_html(html)
             return
+
+        # 날짜 정보 추출 (첫 번째 박스의 헤더에서)
+        date_info = "최신"
+        date_tag = boxes[0].find('div', class_='box_type_head')
+        if date_tag:
+            date_text = date_tag.get_text(strip=True)
+            date_match = re.search(r'(\d{4}\.\d{2}\.\d{2})', date_text)
+            if date_match:
+                date_info = date_match.group(1).replace('.', '-')
+
+        html = f'<div class="section"><h2>📈 {investor_kr} 순매수 상위 종목 ({market_kr})</h2>'
+        html += f'<p class="info-text">기준일: {date_info}</p>'
+        html += '<div class="stock-list">'
 
         stock_table = boxes[0].find('table')
         if not stock_table:
@@ -181,7 +206,7 @@ class UnifiedStockDashboardHTML:
         investor_kr = '외국인' if self.investor_type == 'foreign' else '기관'
         market_kr = 'KOSPI' if self.market == 'kospi' else 'KOSDAQ'
 
-        html = f'<div class="section"><h2>📉 어제 {investor_kr} 순매수 종목의 오늘 등락률 ({market_kr})</h2>'
+        html = f'<div class="section"><h2>📉 전일 {investor_kr} 순매수 종목의 당일 등락률 ({market_kr})</h2>'
 
         list_url = f"{self.BASE_URL}/sise/sise_deal_rank_iframe.naver?sosok={self.market_code}&investor_gubun={self.investor_code}&type=buy"
         soup = self._fetch_url(list_url)
@@ -280,6 +305,7 @@ class UnifiedStockDashboardHTML:
 
         consecutive_codes = set()
         all_day_stocks = []
+        date_list = []
 
         for i in range(self.consecutive_days):
             list_url = f"{self.BASE_URL}/sise/sise_deal_rank_iframe.naver?sosok={self.market_code}&investor_gubun={self.investor_code}&type=buy"
@@ -291,6 +317,14 @@ class UnifiedStockDashboardHTML:
             boxes = soup.find_all('div', class_='box_type_ms')
             if len(boxes) <= i:
                 break
+
+            # 날짜 정보 추출
+            date_tag = boxes[i].find('div', class_='box_type_head')
+            if date_tag:
+                date_text = date_tag.get_text(strip=True)
+                date_match = re.search(r'(\d{4}\.\d{2}\.\d{2})', date_text)
+                if date_match:
+                    date_list.append(date_match.group(1).replace('.', '-'))
 
             stock_table = boxes[i].find('table')
             if not stock_table:
@@ -330,7 +364,14 @@ class UnifiedStockDashboardHTML:
         latest_stocks_map = {code: name for name, code in all_day_stocks[0]}
         consecutive_stocks = [(latest_stocks_map[code], code) for code in consecutive_codes if code in latest_stocks_map]
 
-        html += f'<p class="info-text">총 {len(consecutive_stocks)}개 종목 발견</p>'
+        # 날짜 정보 표시
+        date_range_str = ""
+        if len(date_list) >= 2:
+            date_range_str = f" ({date_list[-1]} ~ {date_list[0]})"
+        elif len(date_list) == 1:
+            date_range_str = f" ({date_list[0]})"
+
+        html += f'<p class="info-text">총 {len(consecutive_stocks)}개 종목 발견{date_range_str}</p>'
 
         analyzed_results = []
         end_date = datetime.now()
@@ -550,6 +591,11 @@ class UnifiedStockDashboardHTML:
         .index-change {{
             font-size: 1.1em;
             font-weight: bold;
+        }}
+        .index-time {{
+            font-size: 0.75em;
+            color: #999;
+            margin-top: 8px;
         }}
         .positive {{
             color: #e53935;
