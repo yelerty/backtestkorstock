@@ -136,12 +136,14 @@ class UnifiedStockDashboardHTML:
         html += '</div></div>'
         self._add_html(html)
 
-    def get_today_top_stocks(self):
+    def get_today_top_stocks(self, market=None):
         """오늘의 순매수 상위 종목 리스트를 HTML로 변환합니다."""
         investor_kr = '외국인' if self.investor_type == 'foreign' else '기관'
-        market_kr = 'KOSPI' if self.market == 'kospi' else 'KOSDAQ'
+        market = market or self.market
+        market_kr = 'KOSPI' if market == 'kospi' else 'KOSDAQ'
+        market_code = '01' if market == 'kospi' else '02'
 
-        list_url = f"{self.BASE_URL}/sise/sise_deal_rank_iframe.naver?sosok={self.market_code}&investor_gubun={self.investor_code}&type=buy"
+        list_url = f"{self.BASE_URL}/sise/sise_deal_rank_iframe.naver?sosok={market_code}&investor_gubun={self.investor_code}&type=buy"
         soup = self._fetch_url(list_url)
 
         if not soup:
@@ -201,29 +203,32 @@ class UnifiedStockDashboardHTML:
 
         self._add_html(html)
 
-    def analyze_yesterday_performance(self):
+    def analyze_yesterday_performance(self, market=None):
         """어제 순매수 상위 종목들의 오늘 등락률을 분석하여 HTML로 변환합니다."""
         investor_kr = '외국인' if self.investor_type == 'foreign' else '기관'
-        market_kr = 'KOSPI' if self.market == 'kospi' else 'KOSDAQ'
+        market = market or self.market
+        market_kr = 'KOSPI' if market == 'kospi' else 'KOSDAQ'
+        market_code = '01' if market == 'kospi' else '02'
 
-        html = f'<div class="section"><h2>📉 전일 {investor_kr} 순매수 종목의 당일 등락률 ({market_kr})</h2>'
-
-        list_url = f"{self.BASE_URL}/sise/sise_deal_rank_iframe.naver?sosok={self.market_code}&investor_gubun={self.investor_code}&type=buy"
+        list_url = f"{self.BASE_URL}/sise/sise_deal_rank_iframe.naver?sosok={market_code}&investor_gubun={self.investor_code}&type=buy"
         soup = self._fetch_url(list_url)
 
         if not soup:
+            html = f'<div class="section"><h2>📉 전일 {investor_kr} 순매수 종목의 당일 등락률 ({market_kr})</h2>'
             html += '<p>데이터를 가져올 수 없습니다.</p></div>'
             self._add_html(html)
             return
 
         boxes = soup.find_all('div', class_='box_type_ms')
         if len(boxes) < 2:
+            html = f'<div class="section"><h2>📉 전일 {investor_kr} 순매수 종목의 당일 등락률 ({market_kr})</h2>'
             html += '<p>어제 데이터를 찾을 수 없습니다.</p></div>'
             self._add_html(html)
             return
 
         stock_table = boxes[1].find('table')
         if not stock_table:
+            html = f'<div class="section"><h2>📉 전일 {investor_kr} 순매수 종목의 당일 등락률 ({market_kr})</h2>'
             html += '<p>테이블을 찾을 수 없습니다.</p></div>'
             self._add_html(html)
             return
@@ -246,24 +251,36 @@ class UnifiedStockDashboardHTML:
             if stock_name and stock_code:
                 yesterday_stocks.append({'name': stock_name, 'code': stock_code})
 
+        # 날짜 정보를 먼저 추출
         today = datetime.now()
         start_day = today - timedelta(days=5)
-
-        results = []
         yesterday_trade_date = None
         today_trade_date = None
 
+        # 첫 번째 종목으로 날짜 정보 추출
+        if yesterday_stocks:
+            try:
+                df = fdr.DataReader(yesterday_stocks[0]['code'], start=start_day, end=today)
+                if len(df) >= 2:
+                    today_trade_date = df.index[-1].strftime('%Y-%m-%d')
+                    yesterday_trade_date = df.index[-2].strftime('%Y-%m-%d')
+            except Exception:
+                pass
+
+        # 날짜 정보를 포함한 제목 생성
+        if yesterday_trade_date and today_trade_date:
+            html = f'<div class="section"><h2>📉 전일({yesterday_trade_date}) {investor_kr} 순매수 종목의 당일({today_trade_date}) 등락률 ({market_kr})</h2>'
+        else:
+            html = f'<div class="section"><h2>📉 전일 {investor_kr} 순매수 종목의 당일 등락률 ({market_kr})</h2>'
+
+        results = []
         html += '<div class="performance-list">'
 
-        for i, stock in enumerate(yesterday_stocks):
+        for stock in yesterday_stocks:
             try:
                 df = fdr.DataReader(stock['code'], start=start_day, end=today)
                 if len(df) < 2:
                     continue
-
-                if i == 0:
-                    today_trade_date = df.index[-1].strftime('%Y-%m-%d')
-                    yesterday_trade_date = df.index[-2].strftime('%Y-%m-%d')
 
                 latest_change = df['Change'].iloc[-1]
                 results.append({
@@ -288,18 +305,17 @@ class UnifiedStockDashboardHTML:
             avg_class = 'positive' if average_change_percent > 0 else 'negative' if average_change_percent < 0 else 'neutral'
             avg_str = f"{average_change_percent:+.2f}%"
 
-            html += f'<div class="summary-box"><strong>평균 등락률:</strong> <span class="change {avg_class}">{avg_str}</span>'
-            if yesterday_trade_date and today_trade_date:
-                html += f'<br><small>기준: {yesterday_trade_date} → {today_trade_date}</small>'
-            html += '</div>'
+            html += f'<div class="summary-box"><strong>평균 등락률:</strong> <span class="change {avg_class}">{avg_str}</span></div>'
 
         html += '</div>'
         self._add_html(html)
 
-    def analyze_consecutive_stocks(self):
+    def analyze_consecutive_stocks(self, market=None):
         """N일 연속 순매수 상위 종목의 펀더멘탈을 분석하여 HTML로 변환합니다."""
         investor_kr = '외국인' if self.investor_type == 'foreign' else '기관'
-        market_kr = 'KOSPI' if self.market == 'kospi' else 'KOSDAQ'
+        market = market or self.market
+        market_kr = 'KOSPI' if market == 'kospi' else 'KOSDAQ'
+        market_code = '01' if market == 'kospi' else '02'
 
         html = f'<div class="section"><h2>🎯 {self.consecutive_days}일 연속 {investor_kr} 순매수 종목 펀더멘탈 분석 ({market_kr})</h2>'
 
@@ -308,7 +324,7 @@ class UnifiedStockDashboardHTML:
         date_list = []
 
         for i in range(self.consecutive_days):
-            list_url = f"{self.BASE_URL}/sise/sise_deal_rank_iframe.naver?sosok={self.market_code}&investor_gubun={self.investor_code}&type=buy"
+            list_url = f"{self.BASE_URL}/sise/sise_deal_rank_iframe.naver?sosok={market_code}&investor_gubun={self.investor_code}&type=buy"
             soup = self._fetch_url(list_url)
 
             if not soup:
@@ -495,10 +511,18 @@ class UnifiedStockDashboardHTML:
         """모든 데이터를 수집하고 HTML 파일을 생성합니다."""
         print("데이터 수집 중...")
 
+        # 시장 현황 (공통)
         self.get_market_indices()
-        self.get_today_top_stocks()
-        self.analyze_yesterday_performance()
-        self.analyze_consecutive_stocks()
+
+        # KOSPI 섹션
+        self.get_today_top_stocks(market='kospi')
+        self.analyze_yesterday_performance(market='kospi')
+        self.analyze_consecutive_stocks(market='kospi')
+
+        # KOSDAQ 섹션
+        self.get_today_top_stocks(market='kosdaq')
+        self.analyze_yesterday_performance(market='kosdaq')
+        self.analyze_consecutive_stocks(market='kosdaq')
 
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
