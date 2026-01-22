@@ -53,6 +53,216 @@ class UnifiedStockDashboardHTML:
         """HTML 파트를 추가합니다."""
         self.html_parts.append(html)
 
+    def get_sector_overview(self):
+        """업종별 분위기를 분석하여 HTML로 변환합니다."""
+        html = '<div class="section"><h2>🏭 섹터별 분위기</h2>'
+
+        # 네이버 금융 업종별 시세 페이지
+        url = f"{self.BASE_URL}/sise/sise_group.naver?type=upjong"
+        soup = self._fetch_url(url)
+
+        if not soup:
+            html += '<p>데이터를 가져올 수 없습니다.</p></div>'
+            self._add_html(html)
+            return
+
+        table = soup.find('table', class_='type_1')
+        if not table:
+            html += '<p>업종 데이터를 찾을 수 없습니다.</p></div>'
+            self._add_html(html)
+            return
+
+        sectors = []
+        for row in table.find_all('tr'):
+            cols = row.find_all('td')
+            if len(cols) < 4:
+                continue
+
+            sector_link = cols[0].find('a')
+            if not sector_link:
+                continue
+
+            sector_name = sector_link.text.strip()
+            change_text = cols[1].text.strip().replace('%', '').replace('+', '').replace(',', '')
+
+            try:
+                change = float(change_text)
+            except ValueError:
+                continue
+
+            # 등락 종목 수 파싱
+            up_count = cols[2].text.strip() if len(cols) > 2 else '0'
+            down_count = cols[3].text.strip() if len(cols) > 3 else '0'
+
+            sectors.append({
+                'name': sector_name,
+                'change': change,
+                'up_count': up_count,
+                'down_count': down_count
+            })
+
+        if not sectors:
+            html += '<p>업종 데이터를 파싱할 수 없습니다.</p></div>'
+            self._add_html(html)
+            return
+
+        # 상승/하락 업종 분리 및 정렬
+        rising_sectors = sorted([s for s in sectors if s['change'] > 0], key=lambda x: x['change'], reverse=True)
+        falling_sectors = sorted([s for s in sectors if s['change'] < 0], key=lambda x: x['change'])
+        neutral_sectors = [s for s in sectors if s['change'] == 0]
+
+        # 요약 통계
+        total = len(sectors)
+        rising_count = len(rising_sectors)
+        falling_count = len(falling_sectors)
+        avg_change = sum(s['change'] for s in sectors) / total if total > 0 else 0
+
+        # 시장 분위기 판단
+        if rising_count > falling_count * 1.5:
+            mood = "🟢 강세"
+            mood_class = "positive"
+        elif falling_count > rising_count * 1.5:
+            mood = "🔴 약세"
+            mood_class = "negative"
+        else:
+            mood = "🟡 혼조"
+            mood_class = "neutral"
+
+        html += f'''
+        <div class="sector-summary">
+            <div class="mood-indicator {mood_class}">
+                <span class="mood-label">오늘의 시장 분위기</span>
+                <span class="mood-value">{mood}</span>
+            </div>
+            <div class="sector-stats">
+                <div class="stat-item positive">상승 업종: {rising_count}개</div>
+                <div class="stat-item negative">하락 업종: {falling_count}개</div>
+                <div class="stat-item neutral">보합 업종: {len(neutral_sectors)}개</div>
+                <div class="stat-item">평균 등락률: <span class="{'positive' if avg_change > 0 else 'negative' if avg_change < 0 else 'neutral'}">{avg_change:+.2f}%</span></div>
+            </div>
+        </div>
+        '''
+
+        # 상승 업종 TOP 10
+        html += '<div class="sector-grid">'
+        html += '<div class="sector-column rising">'
+        html += '<h3>📈 상승 업종 TOP 10</h3>'
+        html += '<div class="sector-list">'
+
+        for i, sector in enumerate(rising_sectors[:10], 1):
+            html += f'''
+            <div class="sector-item">
+                <span class="sector-rank">#{i}</span>
+                <span class="sector-name">{sector['name']}</span>
+                <span class="sector-change positive">+{sector['change']:.2f}%</span>
+            </div>
+            '''
+
+        html += '</div></div>'
+
+        # 하락 업종 TOP 10
+        html += '<div class="sector-column falling">'
+        html += '<h3>📉 하락 업종 TOP 10</h3>'
+        html += '<div class="sector-list">'
+
+        for i, sector in enumerate(falling_sectors[:10], 1):
+            html += f'''
+            <div class="sector-item">
+                <span class="sector-rank">#{i}</span>
+                <span class="sector-name">{sector['name']}</span>
+                <span class="sector-change negative">{sector['change']:.2f}%</span>
+            </div>
+            '''
+
+        html += '</div></div></div></div>'
+        self._add_html(html)
+
+    def get_theme_stocks(self):
+        """테마별 시세를 분석하여 HTML로 변환합니다."""
+        html = '<div class="section"><h2>🔥 테마별 분위기</h2>'
+
+        # 네이버 금융 테마별 시세 페이지
+        url = f"{self.BASE_URL}/sise/theme.naver"
+        soup = self._fetch_url(url)
+
+        if not soup:
+            html += '<p>데이터를 가져올 수 없습니다.</p></div>'
+            self._add_html(html)
+            return
+
+        table = soup.find('table', class_='type_1')
+        if not table:
+            html += '<p>테마 데이터를 찾을 수 없습니다.</p></div>'
+            self._add_html(html)
+            return
+
+        themes = []
+        for row in table.find_all('tr'):
+            cols = row.find_all('td')
+            if len(cols) < 4:
+                continue
+
+            theme_link = cols[0].find('a')
+            if not theme_link:
+                continue
+
+            theme_name = theme_link.text.strip()
+            change_text = cols[1].text.strip().replace('%', '').replace('+', '').replace(',', '')
+
+            try:
+                change = float(change_text)
+            except ValueError:
+                continue
+
+            themes.append({
+                'name': theme_name,
+                'change': change
+            })
+
+        if not themes:
+            html += '<p>테마 데이터를 파싱할 수 없습니다.</p></div>'
+            self._add_html(html)
+            return
+
+        # 상승/하락 테마 분리 및 정렬
+        rising_themes = sorted([t for t in themes if t['change'] > 0], key=lambda x: x['change'], reverse=True)
+        falling_themes = sorted([t for t in themes if t['change'] < 0], key=lambda x: x['change'])
+
+        html += '<div class="theme-grid">'
+
+        # 상승 테마 TOP 10
+        html += '<div class="theme-column rising">'
+        html += '<h3>🚀 급등 테마 TOP 10</h3>'
+        html += '<div class="theme-list">'
+
+        for i, theme in enumerate(rising_themes[:10], 1):
+            html += f'''
+            <div class="theme-item">
+                <span class="theme-rank">#{i}</span>
+                <span class="theme-name">{theme['name']}</span>
+                <span class="theme-change positive">+{theme['change']:.2f}%</span>
+            </div>
+            '''
+
+        html += '</div></div>'
+
+        # 하락 테마 TOP 10
+        html += '<div class="theme-column falling">'
+        html += '<h3>💔 급락 테마 TOP 10</h3>'
+        html += '<div class="theme-list">'
+
+        for i, theme in enumerate(falling_themes[:10], 1):
+            html += f'''
+            <div class="theme-item">
+                <span class="theme-rank">#{i}</span>
+                <span class="theme-name">{theme['name']}</span>
+                <span class="theme-change negative">{theme['change']:.2f}%</span>
+            </div>
+            '''
+
+        html += '</div></div></div></div>'
+        self._add_html(html)
+
     def get_market_indices(self):
         """국내외 시장 지수 정보를 가져와 HTML로 변환합니다."""
         html = '<div class="section"><h2>📊 시장 현황</h2><div class="indices-grid">'
@@ -514,6 +724,10 @@ class UnifiedStockDashboardHTML:
         # 시장 현황 (공통)
         self.get_market_indices()
 
+        # 섹터별 분위기 (새로 추가)
+        self.get_sector_overview()
+        self.get_theme_stocks()
+
         # KOSPI 섹션
         self.get_today_top_stocks(market='kospi')
         self.analyze_yesterday_performance(market='kospi')
@@ -746,6 +960,105 @@ class UnifiedStockDashboardHTML:
             color: #1976d2;
             margin-bottom: 15px;
         }}
+        /* 섹터별 분위기 스타일 */
+        .sector-summary {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 25px;
+            align-items: center;
+        }}
+        .mood-indicator {{
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 20px 30px;
+            border-radius: 15px;
+            text-align: center;
+            flex: 1;
+            min-width: 200px;
+        }}
+        .mood-indicator.positive {{
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+        }}
+        .mood-indicator.negative {{
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+        }}
+        .mood-label {{
+            display: block;
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }}
+        .mood-value {{
+            display: block;
+            font-size: 1.8em;
+            font-weight: bold;
+        }}
+        .sector-stats {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            flex: 2;
+        }}
+        .stat-item {{
+            background: #f8f9fa;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-weight: 500;
+        }}
+        .sector-grid, .theme-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }}
+        .sector-column, .theme-column {{
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+        }}
+        .sector-column.rising, .theme-column.rising {{
+            border-left: 4px solid #e53935;
+        }}
+        .sector-column.falling, .theme-column.falling {{
+            border-left: 4px solid #1e88e5;
+        }}
+        .sector-column h3, .theme-column h3 {{
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }}
+        .sector-list, .theme-list {{
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }}
+        .sector-item, .theme-item {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            transition: transform 0.2s;
+        }}
+        .sector-item:hover, .theme-item:hover {{
+            transform: translateX(5px);
+        }}
+        .sector-rank, .theme-rank {{
+            background: #667eea;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }}
+        .sector-name, .theme-name {{
+            flex: 1;
+            font-weight: 500;
+        }}
+        .sector-change, .theme-change {{
+            font-weight: bold;
+            min-width: 70px;
+            text-align: right;
+        }}
         @media (max-width: 768px) {{
             .header h1 {{
                 font-size: 1.8em;
@@ -768,7 +1081,7 @@ class UnifiedStockDashboardHTML:
         {''.join(self.html_parts)}
 
         <div class="section" style="text-align: center; color: #666;">
-            <p>이 대시보드는 매일 아침 8시 45분에 자동으로 업데이트됩니다.</p>
+            <p>이 대시보드는 매일 아침 8시에 자동으로 업데이트됩니다.</p>
             <p style="margin-top: 10px;"><small>데이터 출처: Naver Finance, FinanceDataReader, yfinance</small></p>
         </div>
     </div>

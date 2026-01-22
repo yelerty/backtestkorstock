@@ -2,9 +2,9 @@ name: Daily Stock Dashboard Update
 
 on:
   schedule:
-    # 매일 오전 8시 45분 (KST 기준 - UTC로는 전날 23:45)
+    # 매일 오전 8시 (KST 기준 - UTC로는 전날 23:00)
     # GitHub Actions는 UTC 시간대를 사용합니다
-    - cron: '45 23 * * *'
+    - cron: '0 23 * * *'
   workflow_dispatch:  # 수동 실행도 가능하도록
 
 jobs:
