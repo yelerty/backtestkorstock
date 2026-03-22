@@ -21,6 +21,11 @@ def fetch_top200():
     df = df.iloc[2:].reset_index(drop=True)
 
     df["종목명"] = df["기업명"].str.replace(r"\[\d+\]", "", regex=True)
+
+    # 제외 종목
+    exclude = ["더존비즈온"]
+    df = df[~df["종목명"].isin(exclude)]
+
     df["영업이익"] = pd.to_numeric(df["영업이익"], errors="coerce")
     df["매출액"] = pd.to_numeric(df["매출액"], errors="coerce")
     df["자산총계"] = pd.to_numeric(df["자산총계"], errors="coerce")
