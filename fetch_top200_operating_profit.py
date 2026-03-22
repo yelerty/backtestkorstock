@@ -8,10 +8,10 @@ from datetime import datetime
 
 
 def fetch_top200():
-    # sec_cd=STK: KOSPI만
+    # sec_cd=IKS001: KOSPI만 (IKQ001=KOSDAQ)
     url = (
         "https://comp.wisereport.co.kr/ranking/mktExcel.aspx"
-        "?sec_cd=STK&sch=1&fin_typ=0&cn=&menuType=MAIN"
+        "?sec_cd=IKS001&sch=1&fin_typ=0&cn=&menuType=MAIN"
         "&ordertyp=desc&ordercol=4&sec_nm=KOSPI"
     )
 
