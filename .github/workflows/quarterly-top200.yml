@@ -26,13 +26,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install pandas openpyxl lxml
 
-    - name: Fetch KOSPI Top 200 operating profit data
+    - name: Fetch KOSPI operating profit data
       run: |
-        python fetch_top200_operating_profit.py top200_operating_profit_kospi.xlsx
+        python fetch_top200_operating_profit.py operating_profit_kospi.xlsx
 
     - name: Commit and push if changed
       run: |
         git config --global user.name 'GitHub Actions Bot'
         git config --global user.email 'actions@github.com'
-        git add top200_operating_profit_kospi.xlsx
+        git add operating_profit_kospi.xlsx
         git diff --quiet && git diff --staged --quiet || (git commit -m "📊 Update KOSPI Top200 operating profit - $(date +'%Y-%m-%d')" && git push)

@@ -31,10 +31,9 @@ def fetch_top200():
     df["자산총계"] = pd.to_numeric(df["자산총계"], errors="coerce")
     df["당기순이익"] = pd.to_numeric(df["당기순이익"], errors="coerce")
 
-    # 영업이익 내림차순 정렬 후 Top 200
+    # 영업이익 내림차순 정렬 후 전체 (wisereport 보유 ~830개)
     df_sorted = (
         df.sort_values("영업이익", ascending=False)
-        .head(200)
         .reset_index(drop=True)
     )
     df_sorted.index = df_sorted.index + 1
@@ -53,12 +52,12 @@ def main():
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, sheet_name="영업이익 Top200")
+        df.to_excel(writer, sheet_name="영업이익")
 
         # 메타 정보 시트
         meta = pd.DataFrame({
-            "항목": ["데이터 기준", "시장", "정렬 기준", "단위", "생성 시각"],
-            "값": ["최근결산기준", "KOSPI", "영업이익 내림차순", "억원", now],
+            "항목": ["데이터 기준", "시장", "정렬 기준", "단위", "생성 시각", "종목 수"],
+            "값": ["최근결산기준", "KOSPI", "영업이익 내림차순", "억원", now, len(df)],
         })
         meta.to_excel(writer, sheet_name="정보", index=False)
 
